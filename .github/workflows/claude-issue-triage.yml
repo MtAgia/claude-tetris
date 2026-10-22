@@ -1,0 +1,83 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    # Evita bucles con bots y no procesa PRs
+    if: |
+      !github.event.issue.pull_request &&
+      !endsWith(github.actor, '[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Crear labels de area y prioridad si faltan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          create() { gh label create "$1" --color "$2" --description "$3" || true; }
+          create "area:gameplay"  "1d76db" "Logica general de juego"
+          create "area:rotation"  "1d76db" "Rotacion de piezas y kicks"
+          create "area:scoring"   "1d76db" "Puntaje, lineas y niveles"
+          create "area:rendering" "1d76db" "Dibujo en canvas"
+          create "area:input"     "1d76db" "Teclado y controles"
+          create "area:ui"        "1d76db" "HTML, CSS y overlay"
+          create "priority:high"   "b60205" "Prioridad alta"
+          create "priority:medium" "fbca04" "Prioridad media"
+          create "priority:low"    "0e8a16" "Prioridad baja"
+
+      - name: Analizar issue con Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Eres el triager de issues del repo ${{ github.repository }} (Tetris en JS vanilla con Canvas).
+            Issue a analizar: #${{ github.event.issue.number }} (evento: ${{ github.event.action }}).
+
+            Reglas estrictas:
+            - NO modifiques archivos, NO crees ramas ni PRs, NO cierres el issue.
+            - Solo puedes leer el codigo y usar `gh issue view`, `gh issue edit`, `gh issue comment` y `gh label list`.
+            - Responde en español.
+
+            Pasos:
+            1. Lee el issue con `gh issue view ${{ github.event.issue.number }} --comments`.
+            2. Lee `CLAUDE.md` y el codigo relevante (`game.js`, `index.html`, `style.css`) para diagnosticar con contexto real.
+            3. Ejecuta `gh label list` y elige labels SOLO de los existentes:
+               - Tipo (uno o mas): bug, enhancement, documentation, question, duplicate, invalid, accessibility, good first issue, help wanted, wontfix.
+               - Area (uno o mas): area:gameplay, area:rotation, area:scoring, area:rendering, area:input, area:ui.
+               - Prioridad (exactamente uno): priority:high, priority:medium, priority:low.
+            4. Aplica los labels con `gh issue edit ${{ github.event.issue.number }} --add-label "a,b,c"`.
+               Si el evento es `edited`, quita con `--remove-label` los labels de area/prioridad/tipo que ya no apliquen.
+            5. Publica el diagnostico con `gh issue comment ${{ github.event.issue.number }} --edit-last --create-if-none --body "..."`.
+               Un unico comentario: si ya existe uno tuyo, se actualiza en vez de crear otro.
+
+            Plantilla del comentario (empieza con el marcador):
+
+            <!-- claude-issue-triage -->
+            ## 🤖 Diagnóstico automático
+            **Resumen:** una o dos frases.
+            **Clasificación:** labels asignados y justificación breve.
+            **Área afectada:** archivos y funciones concretas (`game.js:linea`, p.ej. `tryRotate()`, `clearLines()`).
+            **Causa probable:** hipótesis basada en el codigo.
+            **Propuesta de solución:** pasos de implementacion, sin escribir el codigo completo.
+            **Riesgos / efectos colaterales:** p.ej. consistencia de `animId`/`lastTime`, tamaño de canvas vs `COLS*BLOCK`.
+            **Información faltante:** preguntas para el autor (omitir si no hay).
+
+            Si el issue no es claro o es spam, usa `invalid` o `question` y explica que falta.
+          claude_args: '--allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*),Read,Glob,Grep"'
