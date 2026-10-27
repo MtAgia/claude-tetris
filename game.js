@@ -13,7 +13,12 @@ const COLORS = [
   '#e57373', // Z - red
   '#90caf9', // J - light blue
   '#ffb74d', // L - orange
+  '#f5f5f5', // 8 - power-up (nunca se escribe en board)
 ];
+
+const POWERUPS = { bomb: '💣', ray: '⚡', tint: '🎨', gravity: '⬇️', freeze: '❄️' };
+const POWERUP_EVERY = 5;
+const FREEZE_MS = 5000;
 
 const PIECES = [
   null,
@@ -35,6 +40,7 @@ const nextCtx = nextCanvas.getContext('2d');
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
 const levelEl = document.getElementById('level');
+const powerEl = document.getElementById('power');
 const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
@@ -63,10 +69,16 @@ function loadTheme() {
   catch { return 'dark'; }
 }
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, pendingPower, freezeLeft;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
+}
+
+function randomPowerup() {
+  const names = Object.keys(POWERUPS);
+  const power = names[Math.floor(Math.random() * names.length)];
+  return { type: 8, power, shape: [[8]], x: Math.floor(COLS / 2), y: 0 };
 }
 
 function randomPiece() {
@@ -127,6 +139,7 @@ function clearLines() {
     }
   }
   if (cleared) {
+    if (Math.floor((lines + cleared) / POWERUP_EVERY) > Math.floor(lines / POWERUP_EVERY)) pendingPower = true;
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
@@ -158,15 +171,60 @@ function softDrop() {
   }
 }
 
+// Baja todas las celdas de cada columna al fondo, conservando el orden
+function compact() {
+  for (let c = 0; c < COLS; c++) {
+    const col = [];
+    for (let r = 0; r < ROWS; r++) if (board[r][c]) col.push(board[r][c]);
+    for (let r = ROWS - 1; r >= 0; r--) board[r][c] = col.pop() ?? 0;
+  }
+}
+
+function applyPower({ power, x, y }) {
+  let removed = 0;
+  const clear = (r, c) => {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS || !board[r][c]) return;
+    board[r][c] = 0;
+    removed++;
+  };
+  switch (power) {
+    case 'bomb':
+      for (let dr = -1; dr <= 1; dr++)
+        for (let dc = -1; dc <= 1; dc++) clear(y + dr, x + dc);
+      break;
+    case 'ray':
+      for (let c = 0; c < COLS; c++) clear(y, c);
+      for (let r = 0; r < ROWS; r++) clear(r, x);
+      break;
+    case 'tint': {
+      const color = board[y + 1]?.[x];
+      if (!color) break;
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++) if (board[r][c] === color) clear(r, c);
+      compact();
+      break;
+    }
+    case 'gravity':
+      compact();
+      break;
+    case 'freeze':
+      freezeLeft = FREEZE_MS;
+      break;
+  }
+  score += removed * 10 * level;
+}
+
 function lockPiece() {
-  merge();
+  if (current.power) applyPower(current);
+  else merge();
   clearLines();
   spawn();
 }
 
 function spawn() {
   current = next;
-  next = randomPiece();
+  next = pendingPower ? randomPowerup() : randomPiece();
+  pendingPower = false;
   if (collide(current.shape, current.x, current.y)) {
     endGame();
   }
@@ -177,9 +235,10 @@ function updateHUD() {
   scoreEl.textContent = score.toLocaleString();
   linesEl.textContent = lines;
   levelEl.textContent = level;
+  powerEl.textContent = freezeLeft > 0 ? `❄️ ${(freezeLeft / 1000).toFixed(1)}s` : '—';
 }
 
-function drawBlock(context, x, y, colorIndex, size, alpha) {
+function drawBlock(context, x, y, colorIndex, size, alpha, icon) {
   if (!colorIndex) return;
   const color = COLORS[colorIndex];
   context.globalAlpha = alpha ?? 1;
@@ -188,6 +247,12 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
   // highlight
   context.fillStyle = highlightColor;
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  if (icon) {
+    context.font = `${size - 10}px sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(icon, x * size + size / 2, y * size + size / 2 + 1);
+  }
   context.globalAlpha = 1;
 }
 
@@ -222,12 +287,17 @@ function draw() {
   for (let r = 0; r < current.shape.length; r++)
     for (let c = 0; c < current.shape[r].length; c++)
       if (current.shape[r][c])
-        drawBlock(ctx, current.x + c, gy + r, current.shape[r][c], BLOCK, 0.2);
+        drawBlock(ctx, current.x + c, gy + r, current.shape[r][c], BLOCK, 0.2, POWERUPS[current.power]);
 
   // current piece
   for (let r = 0; r < current.shape.length; r++)
     for (let c = 0; c < current.shape[r].length; c++)
-      drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+      drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK, 1, POWERUPS[current.power]);
+
+  if (freezeLeft > 0) {
+    ctx.fillStyle = 'rgba(100, 181, 246, 0.15)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 }
 
 function drawNext() {
@@ -238,7 +308,7 @@ function drawNext() {
   const offY = Math.floor((4 - shape.length) / 2);
   for (let r = 0; r < shape.length; r++)
     for (let c = 0; c < shape[r].length; c++)
-      drawBlock(nextCtx, offX + c, offY + r, shape[r][c], NB);
+      drawBlock(nextCtx, offX + c, offY + r, shape[r][c], NB, 1, POWERUPS[next.power]);
 }
 
 function endGame() {
@@ -266,7 +336,12 @@ function togglePause() {
 function loop(ts) {
   const dt = ts - lastTime;
   lastTime = ts;
-  dropAccum += dt;
+  if (freezeLeft > 0) {
+    freezeLeft = Math.max(0, freezeLeft - dt);
+    updateHUD();
+  } else {
+    dropAccum += dt;
+  }
   if (dropAccum >= dropInterval) {
     dropAccum = 0;
     if (!collide(current.shape, current.x, current.y + 1)) {
@@ -288,6 +363,8 @@ function init() {
   gameOver = false;
   dropInterval = 1000;
   dropAccum = 0;
+  pendingPower = false;
+  freezeLeft = 0;
   lastTime = performance.now();
   next = randomPiece();
   spawn();
