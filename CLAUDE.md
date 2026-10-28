@@ -18,7 +18,8 @@ Open `index.html` directly, or serve statically (e.g. `python -m http.server 800
 
 Key points in `game.js` that span multiple functions:
 
-- Board cells hold `0` or a piece type index 1–7; the same index selects the entry in `COLORS` and `PIECES` (index 0 is `null` in both).
+- Board cells hold `0` or a piece type index 1–7; the same index selects the entry in `PIECES` and in the active skin's `colors` (index 0 is `null` in both; 8 = power-up).
+- Skins: `SKINS` = `{ retro, neon, pastel, pixel }`, each with `colors`, `background` (`{dark, light}` or `null` = CSS `--canvas-bg`), `grid` and its own `drawBlock(ctx, px, py, s, color)`. Global `drawBlock()` handles alpha + power-up icon and delegates to the active `skin`. `applySkin()` redraws live (like `applyTheme`) and the choice is stored in `localStorage` key `tetris-skin`. HUD element id `skin-select` is looked up by `game.js`.
 - Power-ups: `clearLines()` sets `pendingPower` every `POWERUP_EVERY` lines; `spawn()` then makes `next = randomPowerup()` (1×1 piece, `type` 8, has `.power`). Type 8 is never written to `board`: `lockPiece()` calls `applyPower()` instead of `merge()`. `freeze` sets `freezeLeft`, which `loop()` counts down instead of accumulating `dropAccum`. HUD element id `power` is also looked up by `game.js`.
 - Piece lifecycle: `lockPiece()` = `merge()` (or `applyPower()`) → `clearLines()` → `spawn()`. `spawn()` calls `endGame()` if the new piece collides immediately.
 - Game loop: `loop()` is driven by `requestAnimationFrame` and accumulates time in `dropAccum` against `dropInterval`. Pause and game over both `cancelAnimationFrame(animId)`; resuming restarts `loop` manually. Any new code that stops/starts the loop must keep `animId` and `lastTime` consistent.
