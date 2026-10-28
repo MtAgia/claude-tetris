@@ -40,7 +40,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Pieza fantasma** (_ghost piece_): muestra dónde aterrizará la pieza actual.
 - **Vista previa** de la siguiente pieza.
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
-- **Niveles** que aumentan cada 10 líneas y aceleran la caída.
+- **Niveles** que aumentan cada 10 líneas y aceleran la caída; el nivel inicial (1-10) se elige en el menú de pausa.
 - **Power-ups**: cada 5 líneas la siguiente pieza es un bloque especial 1×1 con efecto al aterrizar:
   - 💣 **Bomba**: destruye un área 3×3.
   - ⚡ **Rayo**: limpia la fila y la columna donde cae.
@@ -90,7 +90,7 @@ Después abre `http://localhost:8000` en el navegador.
 | `↑` o `X` | Rotar la pieza en sentido horario |
 | `↓`       | Soft drop (bajar más rápido)      |
 | `Espacio` | Hard drop (caída instantánea)     |
-| `P`       | Pausar / reanudar                 |
+| `P` / `Esc` | Pausar / reanudar (menú de pausa) |
 
 ---
 
@@ -104,7 +104,7 @@ Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
-- Un overlay para los estados **PAUSA** y **GAME OVER**.
+- Un menú de pausa (Reanudar, Reiniciar, Ver controles, Nivel inicial) y un overlay de **GAME OVER**.
 
 ### 2. `style.css`
 

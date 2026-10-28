@@ -22,6 +22,6 @@ Key points in `game.js` that span multiple functions:
 - Power-ups: `clearLines()` sets `pendingPower` every `POWERUP_EVERY` lines; `spawn()` then makes `next = randomPowerup()` (1×1 piece, `type` 8, has `.power`). Type 8 is never written to `board`: `lockPiece()` calls `applyPower()` instead of `merge()`. `freeze` sets `freezeLeft`, which `loop()` counts down instead of accumulating `dropAccum`. HUD element id `power` is also looked up by `game.js`.
 - Piece lifecycle: `lockPiece()` = `merge()` (or `applyPower()`) → `clearLines()` → `spawn()`. `spawn()` calls `endGame()` if the new piece collides immediately.
 - Game loop: `loop()` is driven by `requestAnimationFrame` and accumulates time in `dropAccum` against `dropInterval`. Pause and game over both `cancelAnimationFrame(animId)`; resuming restarts `loop` manually. Any new code that stops/starts the loop must keep `animId` and `lastTime` consistent.
-- `clearLines()` owns level/speed progression (`level = floor(lines/10)+1`, `dropInterval = max(100, 1000 - (level-1)*90)`).
+- `clearLines()` owns level/speed progression (`level = startLevel + floor(lines/10)`, `startLevel` from localStorage `tetris-start-level`, set in `#pause-menu`; `dropInterval = max(100, 1000 - (level-1)*90)`).
 - Rotation is `rotateCW` plus horizontal kicks `[0,-1,1,-2,2]` in `tryRotate()` (not SRS).
 - Canvas size is hardcoded in `index.html` (`300×600` board, `120×120` next preview) and must equal `COLS*BLOCK × ROWS*BLOCK` if those constants change. `drawNext` uses its own block size of 30.
