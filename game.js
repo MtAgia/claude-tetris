@@ -46,6 +46,18 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
+const pauseMenu = document.getElementById('pause-menu');
+const resumeBtn = document.getElementById('resume-btn');
+const pauseRestartBtn = document.getElementById('pause-restart-btn');
+const controlsBtn = document.getElementById('controls-btn');
+const controlsList = document.getElementById('controls-list');
+const startLevelSel = document.getElementById('start-level');
+
+const START_LEVEL_KEY = 'tetris-start-level';
+const MAX_START_LEVEL = 10;
+const RESUME_GUARD_MS = 150;
+let startLevel = loadStartLevel();
+let inputBlockedUntil = 0;
 
 const THEME_KEY = 'tetris-theme';
 let gridColor, highlightColor;
@@ -67,6 +79,17 @@ function applyTheme(theme) {
 function loadTheme() {
   try { return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'; }
   catch { return 'dark'; }
+}
+
+function loadStartLevel() {
+  try {
+    const n = parseInt(localStorage.getItem(START_LEVEL_KEY), 10);
+    return n >= 1 && n <= MAX_START_LEVEL ? n : 1;
+  } catch { return 1; }
+}
+
+function dropIntervalFor(lvl) {
+  return Math.max(100, 1000 - (lvl - 1) * 90);
 }
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, pendingPower, freezeLeft;
@@ -142,8 +165,8 @@ function clearLines() {
     if (Math.floor((lines + cleared) / POWERUP_EVERY) > Math.floor(lines / POWERUP_EVERY)) pendingPower = true;
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
-    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    level = startLevel + Math.floor(lines / 10);
+    dropInterval = dropIntervalFor(level);
     updateHUD();
   }
 }
@@ -323,13 +346,19 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    pauseMenu.classList.add('hidden');
+    if (document.activeElement) document.activeElement.blur();
+    // Evita movimientos accidentales al volver (teclas aún pulsadas)
+    inputBlockedUntil = performance.now() + RESUME_GUARD_MS;
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    controlsList.classList.add('hidden');
+    controlsBtn.setAttribute('aria-expanded', 'false');
+    startLevelSel.value = String(startLevel);
+    pauseMenu.classList.remove('hidden');
+    resumeBtn.focus();
   }
 }
 
@@ -358,10 +387,10 @@ function init() {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = startLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  dropInterval = dropIntervalFor(level);
   dropAccum = 0;
   pendingPower = false;
   freezeLeft = 0;
@@ -370,13 +399,35 @@ function init() {
   spawn();
   updateHUD();
   overlay.classList.add('hidden');
+  pauseMenu.classList.add('hidden');
+  inputBlockedUntil = performance.now() + RESUME_GUARD_MS;
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  // Tab atrapado dentro del menú de pausa
+  if (paused && !gameOver && e.code === 'Tab') {
+    const items = [...pauseMenu.querySelectorAll('button, select')].filter(el => el.offsetParent !== null);
+    const i = items.indexOf(document.activeElement);
+    const nextI = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i + 1) % items.length;
+    e.preventDefault();
+    items[nextI].focus();
+    return;
+  }
+  // Esc dentro del select solo cierra el desplegable
+  if (e.code === 'Escape' && e.target === startLevelSel) return;
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    e.preventDefault();
+    if (!e.repeat) togglePause();
+    return;
+  }
+  // Con el menú abierto solo se navega el menú (default del navegador); sin inputs de juego
   if (paused || gameOver) return;
+  if (performance.now() < inputBlockedUntil) {
+    if (e.code === 'Space') e.preventDefault();
+    return;
+  }
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
@@ -399,7 +450,19 @@ document.addEventListener('keydown', e => {
   updateHUD();
 });
 
-restartBtn.addEventListener('click', init);
+restartBtn.addEventListener('click', () => { init(); restartBtn.blur(); });
+
+resumeBtn.addEventListener('click', () => { if (paused) togglePause(); resumeBtn.blur(); });
+pauseRestartBtn.addEventListener('click', () => { init(); pauseRestartBtn.blur(); });
+controlsBtn.addEventListener('click', () => {
+  const open = controlsList.classList.toggle('hidden') === false;
+  controlsBtn.setAttribute('aria-expanded', String(open));
+});
+startLevelSel.addEventListener('change', () => {
+  startLevel = parseInt(startLevelSel.value, 10) || 1;
+  try { localStorage.setItem(START_LEVEL_KEY, String(startLevel)); } catch {}
+  startLevelSel.blur();
+});
 
 themeToggle.addEventListener('click', () => {
   const theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
